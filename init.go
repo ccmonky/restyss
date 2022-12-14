@@ -7,10 +7,18 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+const (
+	DefaultClientName      = ""
+	DefaultRequestHookName = ""
+)
+
 func init() {
 	typemap.MustRegisterType[*resty.Client]()
-	typemap.MustRegister[*resty.Client](context.Background(), "", New())
+	typemap.MustRegister[*resty.Client](context.Background(), DefaultClientName, New())
 
-	typemap.MustRegisterType[NewRequestFunc]()
-	typemap.MustRegister[NewRequestFunc](context.Background(), "", DefaultNewRequestFunc)
+	typemap.MustRegisterType[RequestHook]()
+	typemap.MustRegister[RequestHook](context.Background(), DefaultRequestHookName, DefaultRequestHook)
+
+	typemap.MustRegisterType[resty.RequestMiddleware]()
+	typemap.MustRegisterType[resty.ResponseMiddleware]()
 }

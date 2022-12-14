@@ -17,6 +17,10 @@ func TestR(t *testing.T) {
 		t.Fatal("should not nil")
 	}
 	var sr *http.Request
+	r = restyss.R(sr)
+	if r == nil {
+		t.Fatal("should not nil")
+	}
 	r = restyss.R("", sr)
 	if r == nil {
 		t.Fatal("should not nil")

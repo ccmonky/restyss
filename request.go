@@ -2,15 +2,16 @@ package restyss
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/ccmonky/typemap"
 	"github.com/go-resty/resty/v2"
 )
 
-func R(a ...any) *resty.Request {
+func R(ps ...any) *resty.Request {
 	var opts []RequestOption
-	for _, p := range a {
+	for _, p := range ps {
 		switch p := p.(type) {
 		case string:
 			opts = append(opts, WithClientName(p))
@@ -18,28 +19,39 @@ func R(a ...any) *resty.Request {
 			opts = append(opts, WithServerRequest(p))
 		case RequestOption:
 			opts = append(opts, p)
+		default:
+			panic(fmt.Errorf("restyss.R not support parameter type: %T", p))
 		}
 	}
-	options := &RequestOptions{}
+	options := &RequestOptions{
+		RequestHookNames: []string{DefaultRequestHookName},
+	}
 	for _, opt := range opts {
 		opt(options)
 	}
-	fn, err := typemap.Get[NewRequestFunc](context.Background(), options.NewRequestFuncName)
+	client, err := typemap.Get[*resty.Client](context.Background(), options.ClientName)
 	if err != nil {
 		panic(err)
 	}
-	request, err := fn(options)
-	if err != nil {
-		panic(err)
+	request := client.R()
+	for _, hookName := range options.RequestHookNames { // FIXME: typemap.GetMany!!!
+		fn, err := typemap.Get[RequestHook](context.Background(), hookName)
+		if err != nil {
+			panic(err)
+		}
+		err = fn(request, options)
+		if err != nil {
+			panic(err)
+		}
 	}
 	return request
 }
 
 type RequestOptions struct {
-	ClientName         string
-	ServerRequest      *http.Request
-	Extension          map[string]any
-	NewRequestFuncName string
+	ClientName       string
+	RequestHookNames []string
+	ServerRequest    *http.Request
+	Extension        map[string]any
 }
 
 type RequestOption func(*RequestOptions)
@@ -62,22 +74,24 @@ func WithExtestion(k string, v any) RequestOption {
 	}
 }
 
-func WithNewRequestFuncName(name string) RequestOption {
+func WithRequestHookNames(names []string) RequestOption {
 	return func(ros *RequestOptions) {
-		ros.NewRequestFuncName = name
+		ros.RequestHookNames = names
 	}
 }
 
-type NewRequestFunc func(*RequestOptions) (*resty.Request, error)
-
-func DefaultNewRequestFunc(options *RequestOptions) (*resty.Request, error) {
-	client, err := typemap.Get[*resty.Client](context.Background(), options.ClientName)
-	if err != nil {
-		return nil, err
+func AppendRequestHook(name string) RequestOption {
+	return func(ros *RequestOptions) {
+		ros.RequestHookNames = append(ros.RequestHookNames, name)
 	}
-	request := client.R()
+}
+
+// RequestHook used to custom request with external input
+type RequestHook func(*resty.Request, *RequestOptions) error
+
+func DefaultRequestHook(request *resty.Request, options *RequestOptions) error {
 	if options.ServerRequest != nil {
 		request.SetContext(options.ServerRequest.Context())
 	}
-	return request, nil
+	return nil
 }
